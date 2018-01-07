@@ -49,7 +49,7 @@ winston.add(winston.transports.File, {
  * @method loadConfiguration
  * @return {Object} Configuration
  */
-function loadConfiguration () {
+function loadConfiguration() {
     if (!fs.existsSync(CONFIG_FILE)) {
         winston.info('No previous configuration found, creating one');
         fs.writeFileSync(CONFIG_FILE, fs.readFileSync(SAMPLE_FILE));
@@ -63,7 +63,7 @@ function loadConfiguration () {
  * @method loadSavedState
  * @return {Object} Configuration
  */
-function loadSavedState () {
+function loadSavedState() {
     var output;
     try {
         output = jsonfile.readFileSync(STATE_FILE);
@@ -83,7 +83,7 @@ function loadSavedState () {
  * Resubscribe on a periodic basis
  * @method saveState
  */
-function saveState () {
+function saveState() {
     winston.info('Saving current state');
     jsonfile.writeFileSync(STATE_FILE, {
         subscriptions: subscriptions,
@@ -100,7 +100,7 @@ function saveState () {
  * @method migrateState
  * @param  {String}     version Version the state was written in before
  */
-function migrateState (version) {
+function migrateState(version) {
     // Make sure the object exists
     if (!config.mqtt) {
         config.mqtt = {};
@@ -156,7 +156,7 @@ function migrateState (version) {
  * @param  {String}  req.body.value Value of device (e.g. "on")
  * @param  {Result}  res            Result Object
  */
-function handlePushEvent (req, res) {
+function handlePushEvent(req, res) {
     var topic = getTopicFor(req.body.name, req.body.type, TOPIC_STATE),
         value = req.body.value;
 
@@ -165,10 +165,20 @@ function handlePushEvent (req, res) {
 
     client.publish(topic, value, {
         retain: config.mqtt[RETAIN]
-    }, function () {
+    }, function() {
         res.send({
             status: 'OK'
         });
+    });
+
+    var jsonTopic = config.preface + '/json';
+    client.publish(jsonTopic, req.body, {
+        retain: config.mqtt[RETAIN]
+    }, function() {
+        winston.info('Published json Message to MQTT: ' + req.body)
+            // res.send({
+            //     status: 'OK'
+            // });
     });
 }
 
@@ -182,11 +192,11 @@ function handlePushEvent (req, res) {
  * @param  {String}  req.body.callback Host and port for SmartThings Hub
  * @param  {Result}  res               Result Object
  */
-function handleSubscribeEvent (req, res) {
+function handleSubscribeEvent(req, res) {
     // Subscribe to all events
     subscriptions = [];
-    Object.keys(req.body.devices).forEach(function (property) {
-        req.body.devices[property].forEach(function (device) {
+    Object.keys(req.body.devices).forEach(function(property) {
+        req.body.devices[property].forEach(function(device) {
             subscriptions.push(getTopicFor(device, property, TOPIC_COMMAND));
         });
     });
@@ -199,7 +209,7 @@ function handleSubscribeEvent (req, res) {
 
     // Subscribe to events
     winston.info('Subscribing to ' + subscriptions.join(', '));
-    client.subscribe(subscriptions, function () {
+    client.subscribe(subscriptions, function() {
         res.send({
             status: 'OK'
         });
@@ -215,7 +225,7 @@ function handleSubscribeEvent (req, res) {
  * @param  {String}    type     Type of topic (command or state)
  * @return {String}             MQTT Topic name
  */
-function getTopicFor (device, property, type) {
+function getTopicFor(device, property, type) {
     var tree = [config.mqtt.preface, device, property],
         suffix;
 
@@ -238,7 +248,7 @@ function getTopicFor (device, property, type) {
  * @param  {String} topic   Topic channel the event came from
  * @param  {String} message Contents of the event
  */
-function parseMQTTMessage (topic, message) {
+function parseMQTTMessage(topic, message) {
     var contents = message.toString();
     winston.info('Incoming message from MQTT: %s = %s', topic, contents);
 
@@ -279,7 +289,7 @@ function parseMQTTMessage (topic, message) {
             type: property,
             value: contents
         }
-    }, function (error, resp) {
+    }, function(error, resp) {
         if (error) {
             // @TODO handle the response from SmartThings
             winston.error('Error from SmartThings Hub: %s', error.toString());
@@ -291,7 +301,7 @@ function parseMQTTMessage (topic, message) {
 
 // Main flow
 async.series([
-    function loadFromDisk (next) {
+    function loadFromDisk(next) {
         var state;
 
         winston.info('Starting SmartThings MQTT Bridge - v%s', CURRENT_VERSION);
@@ -309,21 +319,21 @@ async.series([
 
         process.nextTick(next);
     },
-    function connectToMQTT (next) {
+    function connectToMQTT(next) {
         winston.info('Connecting to MQTT at %s', config.mqtt.host);
 
         client = mqtt.connect(config.mqtt.host, config.mqtt);
         client.on('message', parseMQTTMessage);
-        client.on('connect', function () {
+        client.on('connect', function() {
             if (subscriptions.length > 0) {
                 client.subscribe(subscriptions);
             }
             next();
             // @TODO Not call this twice if we get disconnected
-            next = function () {};
+            next = function() {};
         });
     },
-    function configureCron (next) {
+    function configureCron(next) {
         winston.info('Configuring autosave');
 
         // Save current state every 15 minutes
@@ -331,7 +341,7 @@ async.series([
 
         process.nextTick(next);
     },
-    function setupApp (next) {
+    function setupApp(next) {
         winston.info('Configuring API');
 
         // Accept JSON
@@ -380,7 +390,7 @@ async.series([
         }));
 
         // Proper error messages with Joi
-        app.use(function (err, req, res, next) {
+        app.use(function(err, req, res, next) {
             if (err.isBoom) {
                 return res.status(err.output.statusCode).json(err.output.payload);
             }
@@ -388,7 +398,7 @@ async.series([
 
         app.listen(config.port, next);
     }
-], function (error) {
+], function(error) {
     if (error) {
         return winston.error(error);
     }
