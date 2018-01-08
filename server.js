@@ -167,8 +167,8 @@ function handlePushEvent(req, res) {
     //cpu_load_short,host=server01 value=23422.0 1422568543702900257\n
 
     var telegrafMessage = req.body.type + ',host=' + req.body.name + ' value=' + req.body.value + ' ' + Math.round((new Date()).getTime() / 1000) + '\n';
-    var telegrafTopic = config.preface + '/telegraph';
-    var jsonTopic = config.preface + '/json';
+    var telegrafTopic = config.mqtt.preface + '/telegraph';
+    var jsonTopic = config.mqtt.preface + '/json';
     client.publish(telegrafTopic, telegrafMessage, {
         retain: config.mqtt[RETAIN]
     }, function() {
