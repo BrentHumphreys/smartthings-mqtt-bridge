@@ -163,6 +163,26 @@ function handlePushEvent(req, res) {
     winston.info('Incoming message from SmartThings: %s = %s', topic, value);
     history[topic] = value;
 
+
+    //cpu_load_short,host=server01 value=23422.0 1422568543702900257\n
+
+    var telegrafMessage = req.body.type + ',host=' + req.body.name + ' value=' + req.body.value + ' ' + Math.round((new Date()).getTime() / 1000) + '\n';
+    var telegrafTopic = config.preface + '/telegraph';
+    var jsonTopic = config.preface + '/json';
+    client.publish(telegrafTopic, telegrafMessage, {
+        retain: config.mqtt[RETAIN]
+    }, function() {
+        winston.info('Published telegraph Message to MQTT: ' + telegrafMessage)
+    });
+
+    var jsonTopic = config.preface + '/json';
+    client.publish(jsonTopic, req.body, {
+        retain: config.mqtt[RETAIN]
+    }, function() {
+        winston.info('Published json Message to MQTT: ' + req.body)
+    });
+
+
     client.publish(topic, value, {
         retain: config.mqtt[RETAIN]
     }, function() {
@@ -171,15 +191,6 @@ function handlePushEvent(req, res) {
         });
     });
 
-    var jsonTopic = config.preface + '/json';
-    client.publish(jsonTopic, req.body, {
-        retain: config.mqtt[RETAIN]
-    }, function() {
-        winston.info('Published json Message to MQTT: ' + req.body)
-            // res.send({
-            //     status: 'OK'
-            // });
-    });
 }
 
 /**
