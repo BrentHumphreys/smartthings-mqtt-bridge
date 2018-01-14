@@ -1,42 +1,43 @@
 /*jslint node: true */
-'use strict';
+"use strict";
 
-var winston = require('winston'),
-    express = require('express'),
-    expressJoi = require('express-joi-validator'),
-    expressWinston = require('express-winston'),
-    bodyparser = require('body-parser'),
-    mqtt = require('mqtt'),
-    async = require('async'),
-    path = require('path'),
-    url = require('url'),
-    joi = require('joi'),
-    yaml = require('js-yaml'),
-    jsonfile = require('jsonfile'),
-    fs = require('fs'),
-    semver = require('semver'),
-    influx = require('influx'),
-    request = require('request');
+var winston = require("winston"),
+    express = require("express"),
+    expressJoi = require("express-joi-validator"),
+    expressWinston = require("express-winston"),
+    bodyparser = require("body-parser"),
+    mqtt = require("mqtt"),
+    async = require("async"),
+    path = require("path"),
+    url = require("url"),
+    joi = require("joi"),
+    yaml = require("js-yaml"),
+    jsonfile = require("jsonfile"),
+    fs = require("fs"),
+    semver = require("semver"),
+    influx = require("influx"),
+    influxExpress = require("influx-express"),
+    request = require("request");
 
 var CONFIG_DIR = process.env.CONFIG_DIR || process.cwd(),
-    CONFIG_FILE = path.join(CONFIG_DIR, 'config.yml'),
-    SAMPLE_FILE = path.join(__dirname, '_config.yml'),
-    STATE_FILE = path.join(CONFIG_DIR, 'state.json'),
-    EVENTS_LOG = path.join(CONFIG_DIR, 'events.log'),
-    ACCESS_LOG = path.join(CONFIG_DIR, 'access.log'),
-    ERROR_LOG = path.join(CONFIG_DIR, 'error.log'),
-    CURRENT_VERSION = require('./package').version,
-    TOPIC_STATE = 'state',
-    TOPIC_COMMAND = 'command',
-    RETAIN = 'retain',
-    SUFFIX_STATE = 'state_suffix',
-    SUFFIX_COMMAND = 'command_suffix';
+    CONFIG_FILE = path.join(CONFIG_DIR, "config.yml"),
+    SAMPLE_FILE = path.join(__dirname, "_config.yml"),
+    STATE_FILE = path.join(CONFIG_DIR, "state.json"),
+    EVENTS_LOG = path.join(CONFIG_DIR, "events.log"),
+    ACCESS_LOG = path.join(CONFIG_DIR, "access.log"),
+    ERROR_LOG = path.join(CONFIG_DIR, "error.log"),
+    CURRENT_VERSION = require("./package").version,
+    TOPIC_STATE = "state",
+    TOPIC_COMMAND = "command",
+    RETAIN = "retain",
+    SUFFIX_STATE = "state_suffix",
+    SUFFIX_COMMAND = "command_suffix";
 
 var app = express(),
     client,
     influxClient,
     subscriptions = [],
-    callback = '',
+    callback = "",
     config = {},
     history = {};
 
@@ -53,7 +54,7 @@ winston.add(winston.transports.File, {
  */
 function loadConfiguration() {
     if (!fs.existsSync(CONFIG_FILE)) {
-        winston.info('No previous configuration found, creating one');
+        winston.info("No previous configuration found, creating one");
         fs.writeFileSync(CONFIG_FILE, fs.readFileSync(SAMPLE_FILE));
     }
 
@@ -70,12 +71,12 @@ function loadSavedState() {
     try {
         output = jsonfile.readFileSync(STATE_FILE);
     } catch (ex) {
-        winston.info('No previous state found, continuing');
+        winston.info("No previous state found, continuing");
         output = {
             subscriptions: [],
-            callback: '',
+            callback: "",
             history: {},
-            version: '0.0.0'
+            version: "0.0.0"
         };
     }
     return output;
@@ -86,15 +87,17 @@ function loadSavedState() {
  * @method saveState
  */
 function saveState() {
-    winston.info('Saving current state');
-    jsonfile.writeFileSync(STATE_FILE, {
-        subscriptions: subscriptions,
-        callback: callback,
-        history: history,
-        version: CURRENT_VERSION
-    }, {
-        spaces: 4
-    });
+    winston.info("Saving current state");
+    jsonfile.writeFileSync(
+        STATE_FILE, {
+            subscriptions: subscriptions,
+            callback: callback,
+            history: history,
+            version: CURRENT_VERSION
+        }, {
+            spaces: 4
+        }
+    );
 }
 
 /**
@@ -110,15 +113,15 @@ function migrateState(version) {
 
     // This is the previous default, but it's totally wrong
     if (!config.mqtt.preface) {
-        config.mqtt.preface = '/smartthings';
+        config.mqtt.preface = "/smartthings";
     }
 
     // Default Suffixes
     if (!config.mqtt[SUFFIX_STATE]) {
-        config.mqtt[SUFFIX_STATE] = '';
+        config.mqtt[SUFFIX_STATE] = "";
     }
     if (!config.mqtt[SUFFIX_COMMAND]) {
-        config.mqtt[SUFFIX_COMMAND] = '';
+        config.mqtt[SUFFIX_COMMAND] = "";
     }
 
     // Default retain
@@ -133,12 +136,12 @@ function migrateState(version) {
 
     // Default protocol
     if (!url.parse(config.mqtt.host).protocol) {
-        config.mqtt.host = 'mqtt://' + config.mqtt.host;
+        config.mqtt.host = "mqtt://" + config.mqtt.host;
     }
 
     // Stuff was previously in subscription.json, load that and migrate it
-    var SUBSCRIPTION_FILE = path.join(CONFIG_DIR, 'subscription.json');
-    if (semver.lt(version, '1.1.0') && fs.existsSync(SUBSCRIPTION_FILE)) {
+    var SUBSCRIPTION_FILE = path.join(CONFIG_DIR, "subscription.json");
+    if (semver.lt(version, "1.1.0") && fs.existsSync(SUBSCRIPTION_FILE)) {
         var oldState = jsonfile.readFileSync(SUBSCRIPTION_FILE);
         callback = oldState.callback;
         subscriptions = oldState.topics;
@@ -162,63 +165,124 @@ function handlePushEvent(req, res) {
     var topic = getTopicFor(req.body.name, req.body.type, TOPIC_STATE),
         value = req.body.value;
 
-    winston.info('Incoming message from SmartThings: %s = %s', topic, value);
+    winston.info("Incoming message from SmartThings: %s = %s", topic, value);
     history[topic] = value;
-
 
     //cpu_load_short,host=server01 value=23422.0 1422568543702900257\n
 
     //var telegrafMessage = req.body.type + ',host=' + req.body.name + ' value=' + req.body.value + ' ' + Math.round((new Date()).getTime() / 1000) + '\n';
-    var telegrafMessage = req.body.type + ',name=' + req.body.name.replace(' ', '-') + ' ' + req.body.type + '=' + req.body.value + ' ' + Math.round((new Date()).getTime()) + '\n';
+    var telegrafMessage =
+        req.body.type +
+        ",name=" +
+        req.body.name.replace(" ", "-") +
+        " " +
+        req.body.type +
+        "=" +
+        req.body.value +
+        " " +
+        Math.round(new Date().getTime()) +
+        "\n";
     //temperature,name=TestMotion temperature=5.42
 
-    var telegrafTopic = config.mqtt.preface + '/telegraf';
+    var influxFields;
+    var logData = false;
+    switch (req.body.type) {
+        case "temperature":
+            influxFields = {
+                temperature: parseFloat(req.body.value),
+                units: "DegF"
+            };
+            logData = true;
+            break;
+        case "power":
+            influxFields = {
+                power: parseFloat(req.body.value)
+            };
+            logData = true;
+            break;
+        case "humidity":
+            influxFields = {
+                humidity: parseFloat(req.body.value),
+                units: "%"
+            };
+            logData = true;
+            break;
+        case "battery":
+            influxFields = {
+                battery: parseFloat(req.body.value),
+                units: "%"
+            };
+            logData = true;
+            break;
+        case "motion":
+            influxFields = {
+                motion: req.body.value
+            };
+            logData = true;
+            break;
+    }
 
-    influxClient.writePoints([{
-        measurement: req.body.type,
-        tags: {
-            name: req.body.name.replace(' ', '-'),
-            type: req.body.type
-        },
-        fields: {
-            value: req.body.value,
-            dummy: 1
-        },
-        timestamp: Math.round((new Date()).getTime())
-    }]).then((idbValue) => {
+    if (logData) {
+        winston.info("Writing to Influx");
+        influxClient
+            .writePoints([{
+                measurement: 'sensordata',
+                tags: {
+                    name: req.body.name.replace(" ", "-"),
+                    type: req.body.type
+                },
+                fields: influxFields,
+                timestamp: Math.round(new Date().getTime())
+            }])
+            .then(
+                idbValue => {
+                    winston.info(idbValue);
+                    winston.info("Completed Write to InFluxDB");
+                },
+                idbValue => {
+                    winston.error(idbValue);
+                }
+            )
+            .catch(err => {
+                winston.error(`Error saving data to InfluxDB! ${err.stack}`);
+                //console.error(`Error saving data to InfluxDB! ${err.stack}`)
+            });
+    }
 
-            winston.info('Completed Write to InFluxDB');
+    var telegrafTopic = config.mqtt.preface + "/telegraf";
+
+    client.publish(
+        telegrafTopic,
+        telegrafMessage, {
+            retain: config.mqtt[RETAIN]
         },
-        (idbValue) => {
-            winston.error(idbValue);
+        function() {
+            winston.info("Published telegraph Message to MQTT: " + telegrafMessage);
         }
-    ).catch(err => {
-        winston.error(`Error saving data to InfluxDB! ${err.stack}`)
-            //console.error(`Error saving data to InfluxDB! ${err.stack}`)
-    })
+    );
 
-    client.publish(telegrafTopic, telegrafMessage, {
-        retain: config.mqtt[RETAIN]
-    }, function() {
-        winston.info('Published telegraph Message to MQTT: ' + telegrafMessage)
-    });
+    var jsonTopic = config.mqtt.preface + "/json";
+    client.publish(
+        jsonTopic,
+        req.body, {
+            retain: config.mqtt[RETAIN]
+        },
+        function() {
+            winston.info("Published json Message to MQTT: " + req.body);
+        }
+    );
 
-    var jsonTopic = config.mqtt.preface + '/json';
-    client.publish(jsonTopic, req.body, {
-        retain: config.mqtt[RETAIN]
-    }, function() {
-        winston.info('Published json Message to MQTT: ' + req.body)
-    });
-
-
-    client.publish(topic, value, {
-        retain: config.mqtt[RETAIN]
-    }, function() {
-        res.send({
-            status: 'OK'
-        });
-    });
-
+    client.publish(
+        topic,
+        value, {
+            retain: config.mqtt[RETAIN]
+        },
+        function() {
+            res.send({
+                status: "OK"
+            });
+        }
+    );
 }
 
 /**
@@ -247,14 +311,13 @@ function handleSubscribeEvent(req, res) {
     saveState();
 
     // Subscribe to events
-    winston.info('Subscribing to ' + subscriptions.join(', '));
+    winston.info("Subscribing to " + subscriptions.join(", "));
     client.subscribe(subscriptions, function() {
         res.send({
-            status: 'OK'
+            status: "OK"
         });
     });
 }
-
 
 /**
  * Get the topic name for a given item
@@ -278,7 +341,7 @@ function getTopicFor(device, property, type) {
         tree.push(suffix);
     }
 
-    return tree.join('/');
+    return tree.join("/");
 }
 
 /**
@@ -289,192 +352,221 @@ function getTopicFor(device, property, type) {
  */
 function parseMQTTMessage(topic, message) {
     var contents = message.toString();
-    winston.info('Incoming message from MQTT: %s = %s', topic, contents);
+    winston.info("Incoming message from MQTT: %s = %s", topic, contents);
 
     // Remove the preface from the topic before splitting it
-    var pieces = topic.substr(config.mqtt.preface.length + 1).split('/'),
+    var pieces = topic.substr(config.mqtt.preface.length + 1).split("/"),
         device = pieces[0],
         property = pieces[1],
         topicState = getTopicFor(device, property, TOPIC_STATE),
-        topicSwitchState = getTopicFor(device, 'switch', TOPIC_STATE),
-        topicLevelCommand = getTopicFor(device, 'level', TOPIC_COMMAND);
+        topicSwitchState = getTopicFor(device, "switch", TOPIC_STATE),
+        topicLevelCommand = getTopicFor(device, "level", TOPIC_COMMAND);
 
     if (history[topicState] === contents) {
-        winston.info('Skipping duplicate message from: %s = %s', topic, contents);
+        winston.info("Skipping duplicate message from: %s = %s", topic, contents);
         return;
     }
     history[topic] = contents;
 
     // If sending level data and the switch is off, don't send anything
     // SmartThings will turn the device on (which is confusing)
-    if (property === 'level' && history[topicSwitchState] === 'off') {
-        winston.info('Skipping level set due to device being off');
+    if (property === "level" && history[topicSwitchState] === "off") {
+        winston.info("Skipping level set due to device being off");
         return;
     }
 
     // If sending switch data and there is already a level value, send level instead
     // SmartThings will turn the device on
-    if (property === 'switch' && contents === 'on' &&
-        history[topicLevelCommand] !== undefined) {
-        winston.info('Passing level instead of switch on');
-        property = 'level';
+    if (
+        property === "switch" &&
+        contents === "on" &&
+        history[topicLevelCommand] !== undefined
+    ) {
+        winston.info("Passing level instead of switch on");
+        property = "level";
         contents = history[topicLevelCommand];
     }
 
     request.post({
-        url: 'http://' + callback,
-        json: {
-            name: device,
-            type: property,
-            value: contents
+            url: "http://" + callback,
+            json: {
+                name: device,
+                type: property,
+                value: contents
+            }
+        },
+        function(error, resp) {
+            if (error) {
+                // @TODO handle the response from SmartThings
+                winston.error("Error from SmartThings Hub: %s", error.toString());
+                winston.error(JSON.stringify(error, null, 4));
+                winston.error(JSON.stringify(resp, null, 4));
+            }
         }
-    }, function(error, resp) {
-        if (error) {
-            // @TODO handle the response from SmartThings
-            winston.error('Error from SmartThings Hub: %s', error.toString());
-            winston.error(JSON.stringify(error, null, 4));
-            winston.error(JSON.stringify(resp, null, 4));
-        }
-    });
+    );
 }
 
 // Main flow
-async.series([
-    function loadFromDisk(next) {
-        var state;
+async.series(
+    [
+        function loadFromDisk(next) {
+            var state;
 
-        winston.info('Starting SmartThings MQTT Bridge - v%s', CURRENT_VERSION);
-        winston.info('Loading configuration');
-        config = loadConfiguration();
+            winston.info("Starting SmartThings MQTT Bridge - v%s", CURRENT_VERSION);
+            winston.info("Loading configuration");
+            config = loadConfiguration();
 
-        winston.info('Loading previous state');
-        state = loadSavedState();
-        callback = state.callback;
-        subscriptions = state.subscriptions;
-        history = state.history;
+            winston.info("Loading previous state");
+            state = loadSavedState();
+            callback = state.callback;
+            subscriptions = state.subscriptions;
+            history = state.history;
 
-        winston.info('Perfoming configuration migration');
-        migrateState(state.version);
+            winston.info("Perfoming configuration migration");
+            migrateState(state.version);
 
-        process.nextTick(next);
-    },
-    function connectToMQTT(next) {
-        winston.info('Connecting to MQTT at %s', config.mqtt.host);
+            process.nextTick(next);
+        },
+        function connectToMQTT(next) {
+            winston.info("Connecting to MQTT at %s", config.mqtt.host);
 
-        client = mqtt.connect(config.mqtt.host, config.mqtt);
-        client.on('message', parseMQTTMessage);
-        client.on('connect', function() {
-            if (subscriptions.length > 0) {
-                client.subscribe(subscriptions);
-            }
-            next();
-            // @TODO Not call this twice if we get disconnected
-            next = function() {};
-        });
-    },
-    function connectToInflux(next) {
-        winston.info('Connecting to InfluxDB');
-
-        influxClient = new influx.InfluxDB({
-            host: '192.168.9.10',
-            database: 'smartthings',
-            username: 'admin',
-            password: 'kb0fva'
-                // schema: [
-                //  {
-                //    measurement: 'response_times',
-                // fields: {
-                //   path: Influx.FieldType.STRING,
-                //   duration: Influx.FieldType.INTEGER
-                // },
-                //    tags: [
-                //      'host'
-                //    ]
-                //  }
-                //]
-        });
-        process.nextTick(next);
-    },
-    function configureCron(next) {
-        winston.info('Configuring autosave');
-
-        // Save current state every 15 minutes
-        setInterval(saveState, 15 * 60 * 1000);
-
-        process.nextTick(next);
-    },
-    function setupApp(next) {
-        winston.info('Configuring API');
-
-        // Accept JSON
-        app.use(bodyparser.json());
-
-        // Log all requests to disk
-        app.use(expressWinston.logger({
-            transports: [
-                new winston.transports.File({
-                    filename: ACCESS_LOG,
-                    json: false
-                })
-            ]
-        }));
-
-        app.post('/initial', function(req, res) {
-            winston.info(req.body);
-            res.send({
-                status: 'OK'
-            });
-        });
-        app.post('/update', function(req, res) {
-            winston.info(req.body);
-            res.send({
-                status: 'OK'
-            });
-        });
-        // Push event from SmartThings
-        app.post('/push',
-            expressJoi({
-                body: {
-                    //   "name": "Energy Meter",
-                    name: joi.string().required(),
-                    //   "value": "873",
-                    value: joi.string().required(),
-                    //   "type": "power",
-                    type: joi.string().required()
+            client = mqtt.connect(config.mqtt.host, config.mqtt);
+            client.on("message", parseMQTTMessage);
+            client.on("connect", function() {
+                if (subscriptions.length > 0) {
+                    client.subscribe(subscriptions);
                 }
-            }), handlePushEvent);
+                next();
+                // @TODO Not call this twice if we get disconnected
+                next = function() {};
+            });
+        },
+        function connectToInflux(next) {
+            winston.info("Connecting to InfluxDB");
 
-        // Subscribe event from SmartThings
-        app.post('/subscribe',
-            expressJoi({
-                body: {
-                    devices: joi.object().required(),
-                    callback: joi.string().required()
-                }
-            }), handleSubscribeEvent);
+            influxClient = new influx.InfluxDB({
+                host: config.influx.server,
+                database: config.influx.database,
+                username: config.influx.username,
+                password: config.influx.password,
+                schema: [{
+                    measurement: "sensordata",
+                    fields: {
+                        temperature: influx.FieldType.FLOAT,
+                        power: influx.FieldType.FLOAT,
+                        humidity: influx.FieldType.FLOAT,
+                        motion: influx.FieldType.STRING,
+                        battery: influx.FieldType.FLOAT,
+                        units: influx.FieldType.STRING
+                    },
+                    tags: ["name", "type"]
+                }]
+            });
+            process.nextTick(next);
+        },
+        function configureCron(next) {
+            winston.info("Configuring autosave");
 
-        // Log all errors to disk
-        app.use(expressWinston.errorLogger({
-            transports: [
-                new winston.transports.File({
-                    filename: ERROR_LOG,
-                    json: false
+            // Save current state every 15 minutes
+            setInterval(saveState, 15 * 60 * 1000);
+
+            process.nextTick(next);
+        },
+        function setupApp(next) {
+            winston.info("Configuring API");
+
+            // Accept JSON
+            app.use(bodyparser.json());
+
+            var influxOpts = {
+                protocol: "http",
+                host: config.influx.server,
+                port: 8086,
+                database: config.influx.database,
+                username: config.influx.username,
+                password: config.influx.password,
+                batchSize: 10
+            };
+
+            app.use(influxExpress(influxOpts));
+            // Log all requests to disk
+            app.use(
+                expressWinston.logger({
+                    transports: [
+                        new winston.transports.File({
+                            filename: ACCESS_LOG,
+                            json: false
+                        })
+                    ]
                 })
-            ]
-        }));
+            );
 
-        // Proper error messages with Joi
-        app.use(function(err, req, res, next) {
-            if (err.isBoom) {
-                return res.status(err.output.statusCode).json(err.output.payload);
-            }
-        });
+            app.post("/initial", function(req, res) {
+                winston.info(req.body);
+                res.send({
+                    status: "OK"
+                });
+            });
+            app.post("/update", function(req, res) {
+                winston.info(req.body);
+                res.send({
+                    status: "OK"
+                });
+            });
+            // Push event from SmartThings
+            app.post(
+                "/push",
+                expressJoi({
+                    body: {
+                        //   "name": "Energy Meter",
+                        name: joi.string().required(),
+                        //   "value": "873",
+                        value: joi.string().required(),
+                        //   "type": "power",
+                        type: joi.string().required()
+                    }
+                }),
+                handlePushEvent
+            );
 
-        app.listen(config.port, next);
+            // Subscribe event from SmartThings
+            app.post(
+                "/subscribe",
+                expressJoi({
+                    body: {
+                        devices: joi.object().required(),
+                        callback: joi.string().required()
+                    }
+                }),
+                handleSubscribeEvent
+            );
+
+            // Log all errors to disk
+            app.use(
+                expressWinston.errorLogger({
+                    transports: [
+                        new winston.transports.File({
+                            filename: ERROR_LOG,
+                            json: false
+                        })
+                    ]
+                })
+            );
+
+            // Proper error messages with Joi
+            app.use(function(err, req, res, next) {
+                if (err.isBoom) {
+                    return res.status(err.output.statusCode).json(err.output.payload);
+                }
+            });
+
+            app.listen(config.port, next);
+        }
+    ],
+    function(error) {
+        if (error) {
+            return winston.error(error);
+        }
+        winston.info("Listening at http://localhost:%s", config.port);
     }
-], function(error) {
-    if (error) {
-        return winston.error(error);
-    }
-    winston.info('Listening at http://localhost:%s', config.port);
-});
+);
