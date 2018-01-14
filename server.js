@@ -15,6 +15,7 @@ var winston = require('winston'),
     jsonfile = require('jsonfile'),
     fs = require('fs'),
     semver = require('semver'),
+    influx = require('influx'),
     request = require('request');
 
 var CONFIG_DIR = process.env.CONFIG_DIR || process.cwd(),
@@ -33,6 +34,7 @@ var CONFIG_DIR = process.env.CONFIG_DIR || process.cwd(),
 
 var app = express(),
     client,
+    influxClient,
     subscriptions = [],
     callback = '',
     config = {},
@@ -166,16 +168,42 @@ function handlePushEvent(req, res) {
 
     //cpu_load_short,host=server01 value=23422.0 1422568543702900257\n
 
-    var telegrafMessage = req.body.type + ',host=' + req.body.name + ' value=' + req.body.value + ' ' + Math.round((new Date()).getTime() / 1000) + '\n';
-    var telegrafTopic = config.mqtt.preface + '/telegraph';
-    var jsonTopic = config.mqtt.preface + '/json';
+    //var telegrafMessage = req.body.type + ',host=' + req.body.name + ' value=' + req.body.value + ' ' + Math.round((new Date()).getTime() / 1000) + '\n';
+    var telegrafMessage = req.body.type + ',name=' + req.body.name.replace(' ', '-') + ' ' + req.body.type + '=' + req.body.value + ' ' + Math.round((new Date()).getTime()) + '\n';
+    //temperature,name=TestMotion temperature=5.42
+
+    var telegrafTopic = config.mqtt.preface + '/telegraf';
+
+    influxClient.writePoints([{
+        measurement: req.body.type,
+        tags: {
+            name: req.body.name.replace(' ', '-'),
+            type: req.body.type
+        },
+        fields: {
+            value: req.body.value,
+            dummy: 1
+        },
+        timestamp: Math.round((new Date()).getTime())
+    }]).then((idbValue) => {
+
+            winston.info('Completed Write to InFluxDB');
+        },
+        (idbValue) => {
+            winston.error(idbValue);
+        }
+    ).catch(err => {
+        winston.error(`Error saving data to InfluxDB! ${err.stack}`)
+            //console.error(`Error saving data to InfluxDB! ${err.stack}`)
+    })
+
     client.publish(telegrafTopic, telegrafMessage, {
         retain: config.mqtt[RETAIN]
     }, function() {
         winston.info('Published telegraph Message to MQTT: ' + telegrafMessage)
     });
 
-    var jsonTopic = config.preface + '/json';
+    var jsonTopic = config.mqtt.preface + '/json';
     client.publish(jsonTopic, req.body, {
         retain: config.mqtt[RETAIN]
     }, function() {
@@ -344,6 +372,29 @@ async.series([
             next = function() {};
         });
     },
+    function connectToInflux(next) {
+        winston.info('Connecting to InfluxDB');
+
+        influxClient = new influx.InfluxDB({
+            host: '192.168.9.10',
+            database: 'smartthings',
+            username: 'admin',
+            password: 'kb0fva'
+                // schema: [
+                //  {
+                //    measurement: 'response_times',
+                // fields: {
+                //   path: Influx.FieldType.STRING,
+                //   duration: Influx.FieldType.INTEGER
+                // },
+                //    tags: [
+                //      'host'
+                //    ]
+                //  }
+                //]
+        });
+        process.nextTick(next);
+    },
     function configureCron(next) {
         winston.info('Configuring autosave');
 
@@ -368,6 +419,18 @@ async.series([
             ]
         }));
 
+        app.post('/initial', function(req, res) {
+            winston.info(req.body);
+            res.send({
+                status: 'OK'
+            });
+        });
+        app.post('/update', function(req, res) {
+            winston.info(req.body);
+            res.send({
+                status: 'OK'
+            });
+        });
         // Push event from SmartThings
         app.post('/push',
             expressJoi({
