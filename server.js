@@ -165,7 +165,7 @@ function handlePushEvent(req, res) {
     var topic = getTopicFor(req.body.name, req.body.type, TOPIC_STATE),
         value = req.body.value;
 
-    winston.info("Incoming message from SmartThings: %s = %s", topic, value);
+    //winston.info("Incoming message from SmartThings: %s = %s", topic, value);
     history[topic] = value;
 
     //cpu_load_short,host=server01 value=23422.0 1422568543702900257\n
