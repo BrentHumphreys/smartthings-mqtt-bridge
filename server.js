@@ -604,13 +604,13 @@ async.series(
             );
 
             app.post("/initial", function(req, res) {
-                winston.info(req.body);
+                //winston.info(req.body);
                 res.send({
                     status: "OK"
                 });
             });
             app.post("/update", function(req, res) {
-                winston.info(req.body);
+                //winston.info(req.body);
                 res.send({
                     status: "OK"
                 });
