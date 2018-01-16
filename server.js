@@ -220,10 +220,96 @@ function handlePushEvent(req, res) {
             };
             logData = true;
             break;
+        case "energy":
+            influxFields = {
+                energy: req.body.value
+            };
+            logData = true;
+            break;
+        case "trackDescription":
+            influxFields = {
+                trackName: req.body.value
+            };
+            logData = true;
+            break;
+        case "illuminance":
+            influxFields = {
+                illuminance: parseFloat(req.body.value)
+            };
+            logData = true;
+            break;
+        case 'door':
+            influxFields = {
+                door: req.body.value
+            };
+            logData = true;
+            break;
+        case 'thermostatOperatingState':
+            influxFields = {
+                thermostatOperatingState: req.body.value
+            };
+            logData = true;
+            break;
+        case 'switch':
+            influxFields = {
+                switch: req.body.value
+            };
+            logData = true;
+            break;
+
+        case 'contact':
+            influxFields = {
+                contact: req.body.value
+            };
+            logData = true;
+            break;
+
+        case 'presence':
+            influxFields = {
+                presence: req.body.value
+            };
+            logData = true;
+            break;
+
+        case 'trackData':
+            influxFields = {
+                trackData: req.body.value
+            };
+            logData = true;
+            break;
+
+        case 'status':
+            influxFields = {
+                status: req.body.value
+            };
+            logData = true;
+            break;
+
+
+
+        case "level":
+            influxFields = {
+                level: parseFloat(req.body.value)
+            };
+            logData = true;
+            break;
+        case "heatingSetpoint":
+            influxFields = {
+                heatingSetpoint: parseFloat(req.body.value)
+            };
+            logData = true;
+            break;
+
+        case "thermostatSetpoint":
+            influxFields = {
+                thermostatSetpoint: parseFloat(req.body.value)
+            };
+            logData = true;
+            break;
     }
 
     if (logData) {
-        winston.info("Writing to Influx");
+        //winston.info("Writing to Influx");
         influxClient
             .writePoints([{
                 measurement: 'sensordata',
@@ -231,13 +317,13 @@ function handlePushEvent(req, res) {
                     name: req.body.name.replace(" ", "-"),
                     type: req.body.type
                 },
-                fields: influxFields,
-                timestamp: Math.round(new Date().getTime())
+                fields: influxFields
+                    // timestamp: Math.round(new Date().getTime())
             }])
             .then(
                 idbValue => {
-                    winston.info(idbValue);
-                    winston.info("Completed Write to InFluxDB");
+                    //winston.info(idbValue);
+                    //winston.info("Completed Write to InFluxDB");
                 },
                 idbValue => {
                     winston.error(idbValue);
@@ -247,6 +333,8 @@ function handlePushEvent(req, res) {
                 winston.error(`Error saving data to InfluxDB! ${err.stack}`);
                 //console.error(`Error saving data to InfluxDB! ${err.stack}`)
             });
+    } else {
+        winston.error('*** No Handler for ' + req.body.type);
     }
 
     var telegrafTopic = config.mqtt.preface + "/telegraf";
@@ -257,7 +345,7 @@ function handlePushEvent(req, res) {
             retain: config.mqtt[RETAIN]
         },
         function() {
-            winston.info("Published telegraph Message to MQTT: " + telegrafMessage);
+            // winston.info("Published telegraph Message to MQTT: " + telegrafMessage);
         }
     );
 
@@ -268,7 +356,7 @@ function handlePushEvent(req, res) {
             retain: config.mqtt[RETAIN]
         },
         function() {
-            winston.info("Published json Message to MQTT: " + req.body);
+            //winston.info("Published json Message to MQTT: " + req.body);
         }
     );
 
@@ -311,7 +399,7 @@ function handleSubscribeEvent(req, res) {
     saveState();
 
     // Subscribe to events
-    winston.info("Subscribing to " + subscriptions.join(", "));
+    //winston.info("Subscribing to " + subscriptions.join(", "));
     client.subscribe(subscriptions, function() {
         res.send({
             status: "OK"
@@ -352,7 +440,7 @@ function getTopicFor(device, property, type) {
  */
 function parseMQTTMessage(topic, message) {
     var contents = message.toString();
-    winston.info("Incoming message from MQTT: %s = %s", topic, contents);
+    // winston.info("Incoming message from MQTT: %s = %s", topic, contents);
 
     // Remove the preface from the topic before splitting it
     var pieces = topic.substr(config.mqtt.preface.length + 1).split("/"),
@@ -363,7 +451,7 @@ function parseMQTTMessage(topic, message) {
         topicLevelCommand = getTopicFor(device, "level", TOPIC_COMMAND);
 
     if (history[topicState] === contents) {
-        winston.info("Skipping duplicate message from: %s = %s", topic, contents);
+        //   winston.info("Skipping duplicate message from: %s = %s", topic, contents);
         return;
     }
     history[topic] = contents;
@@ -454,10 +542,24 @@ async.series(
                     fields: {
                         temperature: influx.FieldType.FLOAT,
                         power: influx.FieldType.FLOAT,
+                        energy: influx.FieldType.FLOAT,
                         humidity: influx.FieldType.FLOAT,
                         motion: influx.FieldType.STRING,
+                        contact: influx.FieldType.STRING,
+                        presence: influx.FieldType.STRING,
+                        status: influx.FieldType.STRING,
+                        trackData: influx.FieldType.STRING,
+
                         battery: influx.FieldType.FLOAT,
-                        units: influx.FieldType.STRING
+                        level: influx.FieldType.FLOAT,
+                        heatingSetpoint: influx.FieldType.FLOAT,
+                        thermostatSetpoint: influx.FieldType.FLOAT,
+                        trackName: influx.FieldType.STRING,
+                        units: influx.FieldType.STRING,
+                        illuminance: influx.FieldType.FLOAT,
+                        door: influx.FieldType.STRING,
+                        thermostatOperatingState: influx.FieldType.STRING,
+                        switch: influx.FieldType.STRING
                     },
                     tags: ["name", "type"]
                 }]
