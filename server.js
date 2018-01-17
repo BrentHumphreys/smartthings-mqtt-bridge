@@ -165,7 +165,8 @@ function handlePushEvent(req, res) {
     var topic = getTopicFor(req.body.name, req.body.type, TOPIC_STATE),
         value = req.body.value;
 
-    //winston.info("Incoming message from SmartThings: %s = %s", topic, value);
+    winston.info("Incoming message from SmartThings: %s = %s", topic, value);
+    winston.info(req.body);
     history[topic] = value;
 
     //cpu_load_short,host=server01 value=23422.0 1422568543702900257\n
@@ -306,6 +307,12 @@ function handlePushEvent(req, res) {
             };
             logData = true;
             break;
+        case "voltage":
+            influxFields = {
+                voltage: parseFloat(req.body.value)
+            };
+            logData = true;
+            break;
     }
 
     if (logData) {
@@ -315,7 +322,9 @@ function handlePushEvent(req, res) {
                 measurement: 'sensordata',
                 tags: {
                     name: req.body.name.replace(" ", "-"),
-                    type: req.body.type
+                    type: req.body.type,
+                    deviceModel: req.body.deviceType,
+                    source: req.body.source
                 },
                 fields: influxFields
                     // timestamp: Math.round(new Date().getTime())
@@ -544,6 +553,7 @@ async.series(
                         power: influx.FieldType.FLOAT,
                         energy: influx.FieldType.FLOAT,
                         humidity: influx.FieldType.FLOAT,
+                        voltage: influx.FieldType.FLOAT,
                         motion: influx.FieldType.STRING,
                         contact: influx.FieldType.STRING,
                         presence: influx.FieldType.STRING,
@@ -561,7 +571,7 @@ async.series(
                         thermostatOperatingState: influx.FieldType.STRING,
                         switch: influx.FieldType.STRING
                     },
-                    tags: ["name", "type"]
+                    tags: ["name", "type", "source", "deviceModel"]
                 }]
             });
             process.nextTick(next);
@@ -597,7 +607,7 @@ async.series(
                     transports: [
                         new winston.transports.File({
                             filename: ACCESS_LOG,
-                            json: false
+                            json: true
                         })
                     ]
                 })
@@ -625,7 +635,18 @@ async.series(
                         //   "value": "873",
                         value: joi.string().required(),
                         //   "type": "power",
-                        type: joi.string().required()
+                        type: joi.string().required(),
+                        evtDate: joi.date().allow(),
+                        source: joi.string().allow(),
+                        digital: joi.bool().allow(),
+                        physical: joi.bool().allow(),
+                        stateChange: joi.bool().allow(),
+                        data: joi.string().allow(),
+                        description: joi.string().allow(),
+                        deviceManuf: joi.string().allow(),
+                        deviceModel: joi.string().allow(),
+                        deviceType: joi.string().allow()
+
                     }
                 }),
                 handlePushEvent
